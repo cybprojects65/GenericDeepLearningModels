@@ -54,7 +54,7 @@ public class MultiLayerNetworkWhiteBox extends MultiLayerNetwork {
 		 * so that we don't have to detach
 		 */
 		
-		log.info("White box NN started");
+		log.trace("White box NN started");
 		if (outputWorkspace == null || outputWorkspace instanceof DummyWorkspace) {
 			WorkspaceUtils.assertNoWorkspacesOpen("Expected no workspace active in outputOfLayerDetached", true);
 		} else {
@@ -111,7 +111,7 @@ public class MultiLayerNetworkWhiteBox extends MultiLayerNetwork {
 				LayerWorkspaceMgr mgr = (i % 2 == 0 ? mgrEven : mgrOdd);
 
 				if (traceLog) {
-					log.info("About to forward pass: {} - {}", i, layers[i].getClass().getSimpleName());
+					log.trace("About to forward pass: {} - {}", i, layers[i].getClass().getSimpleName());
 				}
 
 //Edge case: for first layer with dropout, inputs can't be in previous workspace (as it hasn't been opened yet)
@@ -191,7 +191,7 @@ public class MultiLayerNetworkWhiteBox extends MultiLayerNetwork {
 				}
 
 				if (traceLog) {
-					log.info("Completed forward pass: {} - {}", i, layers[i].getClass().getSimpleName());
+					log.trace("Completed forward pass: {} - {}", i, layers[i].getClass().getSimpleName());
 				}
 
 //Edge case: for first layer with dropout, inputs can't be in previous workspace (as it hasn't been opened yet)

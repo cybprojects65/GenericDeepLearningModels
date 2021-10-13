@@ -12,6 +12,7 @@ import org.datavec.api.records.reader.impl.csv.CSVSequenceRecordReader;
 import org.datavec.api.split.NumberedFileInputSplit;
 import org.deeplearning4j.datasets.datavec.SequenceRecordReaderDataSetIterator;
 import org.deeplearning4j.nn.api.Layer;
+import org.deeplearning4j.nn.conf.GradientNormalization;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.WorkspaceMode;
@@ -76,14 +77,14 @@ public class DichotomicLSTM {
 	private File baseTestDir;
 	private File featuresDirTest;
 	private File labelsDirTest;
-	int nfilesTraining;
-	int nfilesTest;
-	int nhidden;
-	int numLabelClasses;
-	int miniBatchSize;
-	int nEpochs;
-	File savedNet;
-	File savedNormalizer;
+	public int nfilesTraining;
+	public int nfilesTest;
+	public int nhidden;
+	public int numLabelClasses;
+	public int miniBatchSize;
+	public int nEpochs;
+	public File savedNet;
+	public File savedNormalizer;
 	public double currentAttentionScore;
 
 	
@@ -130,6 +131,8 @@ public class DichotomicLSTM {
 
 	}
 
+	public double accuracy = 0;
+	public String evaluation = "";
 	public void train() throws Exception {
 		
 		//sequences setup
@@ -174,7 +177,9 @@ public class DichotomicLSTM {
         //define architecture
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
                 .seed(123)    //Random number generator seed for improved repeatability. 
-                .weightInit(WeightInit.XAVIER)
+                //.weightInit(WeightInit.XAVIER)
+                //.weightInit(WeightInit.LECUN_NORMAL)
+                .weightInit(WeightInit.SIGMOID_UNIFORM)
                 .updater(new Nadam())
                 //.gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue) 
                 //.gradientNormalizationThreshold(0.5)
@@ -201,7 +206,7 @@ public class DichotomicLSTM {
         //start learning
         net = new MultiLayerNetworkWhiteBox(conf);
         net.init();
-        log.info(net.summary());
+        log.trace(net.summary());
         //System.exit(0);
         log.info("Starting training...");
         net.setListeners(new ScoreIterationListener(20), new EvaluativeListener(testData, 1, InvocationType.EPOCH_END));   //Print the score (loss function value) every 20 iterations
@@ -210,8 +215,9 @@ public class DichotomicLSTM {
         //testing performance
         log.info("Evaluating...");
         Evaluation eval = net.evaluate(testData);
-        log.info(eval.stats());
-        
+        log.trace(eval.stats());
+        accuracy = eval.accuracy();
+        evaluation = eval.stats();
         //solve(testFile);
         
         //net.save(savedNet); // this operation does not include normalisation - use the following one
@@ -225,6 +231,8 @@ public class DichotomicLSTM {
         log.info("TRAINING DONE");
         //System.exit(0);
 	}
+	
+	
 
 	public int classify (File testFile) throws Exception {
 		double[][] matrix = Utils4Models.file2Matrix(testFile, false);
@@ -242,10 +250,10 @@ public class DichotomicLSTM {
 		if (net==null)
 			net = (MultiLayerNetworkWhiteBox) MultiLayerNetworkWhiteBoxSerializer.restoreMultiLayerNetwork(savedNormalizer);
 		
-		log.info("Net file loaded");
+		log.trace("Net file loaded");
 
 		iterator.reset();
-		log.info(net.summary());
+		log.trace(net.summary());
         net.output(iterator);
         
         double [] finaloutput = null;
@@ -258,11 +266,11 @@ public class DichotomicLSTM {
 			long [] shape = outlayer.shape();
 			long noutput = shape[1];
 			long ltimes = shape[2];
-			log.info("Layer "+(d+1));
+			log.trace("Layer "+(d+1));
 			for (int t=0;t<ltimes;t++) {
 				INDArray output_t = outlayer.slice(t, 2);
 				double [] vectorO = output_t.data().getDoublesAt(0, (int)noutput);
-				log.info("Output t"+(t+1)+": "+Arrays.toString(vectorO));
+				log.trace("Output t"+(t+1)+": "+Arrays.toString(vectorO));
 				if (d == (nlayers-1) && t == (ltimes-1))
 					finaloutput = vectorO;
 				if (d == (nlayers-2) && t == (ltimes-1))
@@ -273,28 +281,28 @@ public class DichotomicLSTM {
 		double class0 = finaloutput[0];
 		double class1 = finaloutput[1];
 		
-		log.info("Class 0 score: "+class0);
-		log.info("Class 1 score: "+class1);
+		log.trace("Class 0 score: "+class0);
+		log.trace("Class 1 score: "+class1);
 		
 		int classification = -1;
 		if (class0>class1) {
-			log.info("CLASSIFICATION 0");
+			log.trace("CLASSIFICATION 0");
 			classification = 0;
 		}
 		else {
-			log.info("CLASSIFICATION 1");
+			log.trace("CLASSIFICATION 1");
 			classification = 1;
 		}
-		log.info("Attention vector "+Arrays.toString(attentionoutput));
+		log.trace("Attention vector "+Arrays.toString(attentionoutput));
 		
 		double attentionscore = 0;
 		for (double attention:attentionoutput) {
 			attentionscore  = attentionscore + attention;
 		}
 		
-		log.info("ATTENTION SCORE: "+attentionscore);
+		log.trace("ATTENTION SCORE: "+attentionscore);
 		currentAttentionScore = attentionscore;
-		log.info("Done!:\n");
+		log.trace("Done!:\n");
 		
 		return classification;
 	}
@@ -334,15 +342,15 @@ public class DichotomicLSTM {
         
         //Tests for MemoryWorkspace
         //MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig, "WS_ID");
-        log.info(net.summary());       
+        log.trace(net.summary());       
         INDArray output = net.output(iterator);
         
         
         
         //INDArray output = this.output(iterator,false,ws);
 		
-		log.info("COMPLETE OUTPUT 0 class "+Arrays.toString(output.data().getDoublesAt(0,matrix.length)));
-		log.info("COMPLETE OUTPUT 1 class "+Arrays.toString(output.data().getDoublesAt(matrix.length,matrix.length*2)));
+		log.trace("COMPLETE OUTPUT 0 class "+Arrays.toString(output.data().getDoublesAt(0,matrix.length)));
+		log.trace("COMPLETE OUTPUT 1 class "+Arrays.toString(output.data().getDoublesAt(matrix.length,matrix.length*2)));
 		
 		double [] finaloutput = null;
 		double [] attentionoutput = null;
@@ -354,11 +362,11 @@ public class DichotomicLSTM {
 			long [] shape = outlayer.shape();
 			long noutput = shape[1];
 			long ltimes = shape[2];
-			log.info("Layer "+(d+1));
+			log.trace("Layer "+(d+1));
 			for (int t=0;t<ltimes;t++) {
 				INDArray output_t = outlayer.slice(t, 2);
 				double [] vectorO = output_t.data().getDoublesAt(0, (int)noutput);
-				log.info("Output t"+(t+1)+": "+Arrays.toString(vectorO));
+				log.trace("Output t"+(t+1)+": "+Arrays.toString(vectorO));
 				
 				if (d == (nlayers-1) && t == (ltimes-1))
 					finaloutput = vectorO;
@@ -373,16 +381,16 @@ public class DichotomicLSTM {
 		double class0 = finaloutput[0];
 		double class1 = finaloutput[1];
 		
-		log.info("Class 0 score: "+class0);
-		log.info("Class 1 score: "+class1);
+		log.trace("Class 0 score: "+class0);
+		log.trace("Class 1 score: "+class1);
 		
 		if (class0>class1)
-			log.info("CLASSIFICATION 0");
+			log.trace("CLASSIFICATION 0");
 		else
-			log.info("CLASSIFICATION 1");
+			log.trace("CLASSIFICATION 1");
 		
 		
-		log.info("Attention vector "+Arrays.toString(attentionoutput));
+		log.trace("Attention vector "+Arrays.toString(attentionoutput));
 		
 		double attentionscore = 0;
 		
@@ -392,7 +400,7 @@ public class DichotomicLSTM {
 			
 		}
 		
-		log.info("ATTENTION SCORE: "+attentionscore);
+		log.trace("ATTENTION SCORE: "+attentionscore);
 		
 		System.exit(0);
 			
@@ -404,13 +412,13 @@ public class DichotomicLSTM {
 		
 		
 		//Map<String,Pointer> helperWorkspaces = net.getHelperWorkspaces();
-		log.info("");
+		log.trace("");
 		
 		
 		
 		long nOutputs = output.size(1);
-		log.info("# expected outputs : "+nOutputs);
-		log.info("time series length : "+timeSeriesLength);
+		log.trace("# expected outputs : "+nOutputs);
+		log.trace("time series length : "+timeSeriesLength);
 		
 		long maxClass = 0;
         double maxScore = 0;
@@ -418,19 +426,19 @@ public class DichotomicLSTM {
         for (long k=0;k<nOutputs;k++)
         {
         	double score = output.getDouble(0,k,timeSeriesLength-1);
-        	log.info("Output "+k+" score on last vector: "+score);
+        	log.trace("Output "+k+" score on last vector: "+score);
         	if (maxScore<score) {
         		maxClass = k;
         		maxScore = score;
         	}
         }
         
-        log.info("Best class:\n"+maxClass);
+        log.trace("Best class:\n"+maxClass);
         
         String detectedLabel = baseTestDir.listFiles()[(int)maxClass].getName();
-        System.out.println("Best label: "+detectedLabel);
+        log.trace("Best label: "+detectedLabel);
         
-        System.out.println("##############");
+        log.trace("##############");
         
         //ATTENTION DISCOVERY
         iterator.reset();
@@ -439,26 +447,26 @@ public class DichotomicLSTM {
         	
         	DataSet ds = iterator.next();
         	int nsamples = ds.numExamples();
-        	log.info("n "+nsamples);
+        	log.trace("n "+nsamples);
         	INDArray f = ds.get(0).getFeatures();
-			log.info("Sample #inputs "+f.shapeInfoToString());
+			log.trace("Sample #inputs "+f.shapeInfoToString());
 						
-			log.info("1 "+f.size(0));
-			log.info("v "+f.size(1));
-			log.info("t "+f.size(2));
+			log.trace("1 "+f.size(0));
+			log.trace("v "+f.size(1));
+			log.trace("t "+f.size(2));
 			long tslength = f.size(2);
 			
 			for (long h=0;h<tslength;h++) {
 				
 				INDArray column = f.slice(h,2);
-				log.info("input "+Arrays.toString(column.data().asDouble()));
-				log.info("column "+h+": "+column.length());
+				log.trace("input "+Arrays.toString(column.data().asDouble()));
+				log.trace("column "+h+": "+column.length());
 				INDArray reshapedInput = column.reshape(1,3,1);
-				log.info("rinput "+Arrays.toString(reshapedInput.data().asDouble()));
+				log.trace("rinput "+Arrays.toString(reshapedInput.data().asDouble()));
 				INDArray outh = net.rnnTimeStep(reshapedInput);
 				
 				//wArr = w.data().asDouble().toList
-				log.info("output "+Arrays.toString(outh.data().asDouble()));
+				log.trace("output "+Arrays.toString(outh.data().asDouble()));
 				
 			}
 			
@@ -466,11 +474,11 @@ public class DichotomicLSTM {
         	it++;
         }
         
-        log.info("# datasets : "+it);
+        log.trace("# datasets : "+it);
         
 		
         
-		log.info("Done!:\n");
+		log.trace("Done!:\n");
 	}
 	
 	
