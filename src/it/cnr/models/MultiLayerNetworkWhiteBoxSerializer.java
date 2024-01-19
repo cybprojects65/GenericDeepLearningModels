@@ -180,7 +180,7 @@ import org.apache.commons.io.IOUtils;
 	            NormalizerSerializer.getDefault().write(dataNormalization, zipfile);
 	        }
 
-	        dos.close();
+	        try{dos.close();}catch(Exception e) {}
 	        zipfile.close();
 	    }
 

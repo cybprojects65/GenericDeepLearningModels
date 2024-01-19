@@ -94,16 +94,19 @@ public class DichotomicLSTM {
 		int nClasses = 2;
 		int minibatch = 2;
 		int nEpochs = 3;
-		
+		System.out.println("TRAINING");
 		lstm.init(new File("./dichotomicsimulatedseries"),
 				nhidden, nClasses, minibatch, nEpochs);
-		//lstm.train();
+		lstm.train();
 		
+		System.out.println("CLASSIFYING");
 		lstm = new DichotomicLSTM();
 		lstm.init(new File("./dichotomicsimulatedseries"),
 				nhidden, nClasses, minibatch, nEpochs);
 		//lstm.solve(testFile);
-		lstm.classify(testFile);
+		int classification = lstm.classify(testFile);
+		System.out.println("Class:"+classification);
+		System.out.println("DONE");
 	}
 
 	
@@ -239,7 +242,13 @@ public class DichotomicLSTM {
 		return classify(matrix);
 	}
 	
+	public double class1Score = 0;
+	public double class0Score = 0;
+	
 	public int classify (double[][] matrix) throws Exception {
+		
+		class1Score = 0;
+		class0Score = 0;
 		
 		if (normalizer==null)
 			normalizer = ModelSerializer.restoreNormalizerFromFile(savedNormalizer);
@@ -280,9 +289,15 @@ public class DichotomicLSTM {
 		
 		double class0 = finaloutput[0];
 		double class1 = finaloutput[1];
+		class0Score = class0;
+		class1Score = class1;
 		
 		log.trace("Class 0 score: "+class0);
 		log.trace("Class 1 score: "+class1);
+		
+		//System.out.println("Class 0 score: "+class0);
+		//System.out.println("Class 1 score: "+class1);
+		
 		
 		int classification = -1;
 		if (class0>class1) {
